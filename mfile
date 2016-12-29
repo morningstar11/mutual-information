@@ -1,0 +1,79 @@
+%//*****************************************       
+%//Copyright (c) 2015 Jingshuang Hu       
+       
+%//@filename:demo.m       
+%//@datetime:2015.08.23       
+%//@author:HJS       
+%//@e-mail:eleftheria@163.com       
+%//@blog:http://blog.csdn.net/hujingshuang       
+%//*****************************************      
+%%   
+%//--------------------------------------------------------------------------  
+%//此程序根据着互信息MR、归一化互信息NMI以及熵相关系数NCC这三个方面求解
+%//图像互信息配准  
+clear all;  %//关闭所有窗口(程序运行产生的，不包括命令窗，editor窗和帮助窗）
+close all;  %//清除所有工作空间中的变量
+img=rgb2gray(imread('lena.jpg'));%//源图 ，保存图像数据，并转化为灰度图，在此也可以使用最大类间方差graythresh取得阈值后将图像二值化im2bw.
+%//（问题1）在此有一个问题图像如何转化为灰度图呢？三个通道每个都是灰度图
+[M,N]=size(img); %//size(image,3)==1 表示图像是灰度图， 等于3为RGB彩色图，存入图像行与列
+%//--------------------------------------------------------------------------  
+x0=30;y0=40;  
+dx=64;dy=64;%//模板、子图尺寸  
+img1=img(x0:x0+dx-1,y0:y0+dy-1);%//模板，创建模板图像 
+ET=entropy(img1);%//计算模板的熵
+%//(问题2)，这如果模板图像是有旋转和尺度变化的呢怎么办？
+%//--------------------------------------------------------------------------  
+%//联合熵  
+[m,n]=size(img1);%//模板尺寸  
+MI=zeros(M-dx,N-dy);%//互信息，以下三句话都是为了开辟内存空间的，用于存储互信息、归一化互信息以及熵相关系数
+NMI=zeros(M-dx,N-dy);%//归一化互信息  
+ECC=zeros(M-dx,N-dy);%//熵相关系数  
+%//（问题3），为什么开辟这么大的空间，即(M-dx,N-dy)的物理意义是什么？，并且空间的大小还一样？
+for i=1:M-dx  
+    for j=1:N-dy  
+        img2=img(i:i+dx-1,j:j+dy-1);%//子图
+        %//程序计算需要知道①待配准图像的大小与模板图像的大小，即在LiDAR道路数据中局部图像的大小与整体图像的大小。
+        ES=entropy(img2);%//模板熵  
+        histq=zeros(256,256);%//联合直方图，清空，开辟联合直方图的存储空间  
+        %//联合直方图,要求两幅图像的大小相同
+        %//在联合直方图有很多代码的例子例如：http://blog.csdn.net/wu_xiangwei/article/details/5691212
+        %//http://baike.baidu.com/link?url=0cmTh8ZYvHC7TKvRFX8ZMceianAVYqDLz1TRhA7Uo6XSyOr7z0JAB6NstKphBL8oE9Ks26Lc6pzvZbc3mLNV00beBXwMfGFTi9jH4UqCz_ZcDQYwRajGiqA0VbJ_6XbOcd9fCx0LIlNhByzJsRcnV_
+        for s=1:m  
+            for t=1:n  
+                x=img1(s,t)+1;y=img2(s,t)+1;%//灰度<—>坐标  
+                histq(x,y)=histq(x,y)+1;  %//此句话的意义是在内存中已经开辟了一个256*256一个内存区域对应着两幅灰度图（0-255）相同位置对应的灰度组合，
+            end  
+        end  
+        p=histq./sum(sum(histq));%//联合概率密度,histq.代表这是数组运算针对每一个位置的元素（需要深入了解一下有关数组运算与矩阵预算20161124） 
+        EST=-sum(sum(p.*log(p+eps)));%//联合熵（越小说明相似度越高）,eps为系统运算时计算机允许取到的最小值为了防止分母为0（新学了一个知识点，对于浮点数而言越靠近0精度越高，即对于浮点数0、1、2来说0的精度最高）
+        MI(i,j)=ES+ET-EST;%//MI互信息越大，说明相互包含的信息多，即越匹配  
+        NMI(i,j)=(ES+ET)/EST;%//NMI,越大越匹配  
+        ECC(i,j)=2*MI(i,j)/(ES+ET);%//ECC，越大越匹配  
+    end  
+end  
+%//--------------------------------------------------------------------------  
+mi_max=max(max(MI));  
+nmi_max=max(max(NMI));  
+ncc_max=max(max(ECC));  
+[xt1,yt1]=find(MI==mi_max);  %//基本明白find返回的是
+[xt2,yt2]=find(NMI==nmi_max);  
+[xt3,yt3]=find(ECC==ncc_max);  
+src=img1;%//模板图像赋给src
+dst1=img(xt1:xt1+dx-1,yt1:yt1+dx-1);  
+dst2=img(xt2:xt2+dx-1,yt2:yt2+dx-1);  
+dst3=img(xt3:xt3+dx-1,yt3:yt3+dx-1);  
+figure;imshow(src);title('模板');  
+figure;imshow(img);hold on;rectangle('position',[yt1,xt1,n-1,m-1],'edgecolor','r');title('MI配准图');hold off;  
+figure;imshow(img);hold on;rectangle('position',[yt2,xt2,n-1,m-1],'edgecolor','r');title('NMI配准图');hold off;  
+figure;imshow(img);hold on;rectangle('position',[yt3,xt3,n-1,m-1],'edgecolor','r');title('NCC配准图');hold off;  
+%//over  
+
+%//就剩下拿LiDAR图像 可见光图像与布局图像进行试验了（记住此程序仅仅可以完成图像没有变形的情况），改成python
+
+%//要了解的是find用法，figure;imshow;hold on 与hold off的关系，并且在图形的上方现实一下相关的方框的值
+%//find用法:http://jingyan.baidu.com/article/3c343ff71444890d3679635d.html
+%//imshow用法：参数可以为路径或者图像矩阵，此中那个方式显示图片不会拉伸图像铺满坐标轴，而是产生隐藏的坐标轴，改变坐标轴宽高比使其适应图像数据（在这一点上image（）函数正好相反，一般而言image函数是用来显示附标图像的）
+%//imagesc用法：具有image的功能，所不同的是imagesc函数还自动将输入数据比例化，以全色图像显示。
+%//figure画窗口，imshow画图像，两者画在一起要用hold on/off.hold on使当前轴及图形保持而不被刷新，准备接受此后将绘制的图形，多图共存.
+
+%//在此基础上要进行基于特征匹配的对比,可以使用matlab实现基于特征的方法（百度一下 估计有很多 起码sift surf harris 还有一些最新的看一下 估计要结合matlab与OpenCV，怎么调用OpenCV库）
